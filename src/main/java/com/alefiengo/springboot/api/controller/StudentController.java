@@ -1,19 +1,22 @@
 package com.alefiengo.springboot.api.controller;
 
-import com.alefiengo.springboot.api.entity.Course;
+import com.alefiengo.springboot.api.dto.ApiResponse;
+import com.alefiengo.springboot.api.dto.CourseResponse;
+import com.alefiengo.springboot.api.dto.StudentRequest;
+import com.alefiengo.springboot.api.dto.StudentResponse;
 import com.alefiengo.springboot.api.entity.Student;
-import com.alefiengo.springboot.api.service.CourseService;
+import com.alefiengo.springboot.api.mapper.CourseMapper;
+import com.alefiengo.springboot.api.mapper.StudentMapper;
 import com.alefiengo.springboot.api.service.StudentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 
-import javax.validation.Valid;
-import java.util.HashMap;
+import jakarta.validation.Valid;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 
 @RequiredArgsConstructor
 @RestController
@@ -21,208 +24,84 @@ import java.util.Optional;
 public class StudentController {
 
     private final StudentService studentService;
-    private final CourseService courseService;
 
     @GetMapping
-    public ResponseEntity<?> getAll() {
-        Map<String, Object> message = new HashMap<>();
-        List<Student> students = (List<Student>) studentService.findAll();
+    public ResponseEntity<ApiResponse<Page<StudentResponse>>> getAll(
+            @RequestParam(required = false) String lastName,
+            @RequestParam(required = false) String firstName,
+            @RequestParam(required = false) String studentNumber,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ) {
+        boolean hasFilters = (lastName != null && !lastName.isBlank())
+                || (firstName != null && !firstName.isBlank())
+                || (studentNumber != null && !studentNumber.isBlank());
 
-        if (students.isEmpty()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", "No students found.");
-            return ResponseEntity.badRequest().body(message);
+        if (!hasFilters && (page != null || size != null)) {
+            int pageNumber = page == null ? 0 : Math.max(page, 0);
+            int pageSize = size == null ? 10 : Math.max(size, 1);
+            Page<StudentResponse> studentsPage = studentService.findAll(PageRequest.of(pageNumber, pageSize))
+                    .map(StudentMapper::toResponse);
+            return ResponseEntity.ok(ApiResponse.success(studentsPage));
         }
 
-        message.put("success", Boolean.TRUE);
-        message.put("data", students);
-
-        return ResponseEntity.ok(message);
+        List<StudentResponse> students = studentService.search(lastName, firstName, studentNumber).stream()
+                .map(StudentMapper::toResponse)
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(pagedOrList(students, page, size)));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getById(@PathVariable Long id) {
-        Map<String, Object> message = new HashMap<>();
-        Optional<Student> oStudent = studentService.findById(id);
-
-        if (!oStudent.isPresent()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No student with ID: '%d', found.", id));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", oStudent.get());
-
-        return ResponseEntity.ok(message);
+    public ResponseEntity<ApiResponse<StudentResponse>> getById(@PathVariable Long id) {
+        Student student = studentService.getByIdOrThrow(id);
+        return ResponseEntity.ok(ApiResponse.success(StudentMapper.toResponse(student)));
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@Valid @RequestBody Student student, BindingResult result) {
-        Map<String, Object> message = new HashMap<>();
-        Map<String, Object> validations = new HashMap<>();
-
-        if (result.hasErrors()) {
-            result.getFieldErrors()
-                    .forEach(error -> {
-                        validations.put(error.getField(), error.getDefaultMessage());
-                    });
-
-            return ResponseEntity.badRequest().body(validations);
-        }
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", studentService.save(student));
-
-        return ResponseEntity.ok(message);
+    public ResponseEntity<ApiResponse<StudentResponse>> create(@Valid @RequestBody StudentRequest request) {
+        Student created = studentService.create(StudentMapper.toEntity(request));
+        return ResponseEntity.status(201).body(ApiResponse.success(StudentMapper.toResponse(created)));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> update(@PathVariable Long id, @Valid @RequestBody Student student, BindingResult result) {
-        Map<String, Object> message = new HashMap<>();
-        Map<String, Object> validations = new HashMap<>();
-        Student studentUpdate = null;
-        Optional<Student> oStudent = studentService.findById(id);
-
-        if (result.hasErrors()) {
-            result.getFieldErrors()
-                    .forEach(error -> {
-                        validations.put(error.getField(), error.getDefaultMessage());
-                    });
-
-            return ResponseEntity.badRequest().body(validations);
-        }
-
-        if (!oStudent.isPresent()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No student with ID: '%d', found.", id));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        studentUpdate = oStudent.get();
-        studentUpdate.setLastName(student.getLastName());
-        studentUpdate.setFirstName(student.getFirstName());
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", studentService.save(studentUpdate));
-
-        return ResponseEntity.ok(message);
+    public ResponseEntity<ApiResponse<StudentResponse>> update(@PathVariable Long id, @Valid @RequestBody StudentRequest request) {
+        Student updated = studentService.update(id, StudentMapper.toEntity(request));
+        return ResponseEntity.ok(ApiResponse.success(StudentMapper.toResponse(updated)));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable Long id) {
-        Map<String, Object> message = new HashMap<>();
-        Optional<Student> oStudent = studentService.findById(id);
-
-        if (!oStudent.isPresent()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No student with ID: '%d', found.", id));
-            return ResponseEntity.badRequest().body(message);
-        }
-
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        studentService.getByIdOrThrow(id);
         studentService.deleteById(id);
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", null);
-
-        return ResponseEntity.ok(message);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{idStudent}/courses/{idCourse}")
-    public ResponseEntity<?> toAssignClassStudent(@PathVariable Long idStudent, @PathVariable Long idCourse) {
-        Map<String, Object> message = new HashMap<>();
-        Optional<Student> oStudent = studentService.findById(idStudent);
-
-        if (!oStudent.isPresent()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No student with ID: '%d', found.", idStudent));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        Optional<Course> oCourse = courseService.findById(idCourse);
-
-        if (!oCourse.isPresent()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No course with ID: '%d', found.", idCourse));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        Student student = oStudent.get();
-        Course course = oCourse.get();
-
-        student.getCourses().add(course);
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", studentService.save(student));
-
-        return ResponseEntity.ok(message);
-    }
-
-    @GetMapping("/lastname-firstname")
-    public ResponseEntity<?> getStudentByLastNameAndFirstName(@RequestParam String lastName, @RequestParam String firstName) {
-        Map<String, Object> message = new HashMap<>();
-        Optional<Student> oStudent = studentService.findStudentByLastNameAndFirstName(lastName, firstName);
-
-        if (!oStudent.isPresent()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No student with last name: '%s' and first name: '%s', found.", lastName, firstName));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", oStudent.get());
-
-        return ResponseEntity.ok(message);
-    }
-
-    @GetMapping("/lastname")
-    public ResponseEntity<?> getStudentByLastName(@RequestParam String lastName) {
-        Map<String, Object> message = new HashMap<>();
-        List<Student> students = (List<Student>) studentService.findStudentByLastName(lastName);
-
-        if (students.isEmpty()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No course with last name contains: '%s', found.", lastName));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", students);
-
-        return ResponseEntity.ok(message);
-    }
-
-    @GetMapping("/firstname")
-    public ResponseEntity<?> getStudentByFirstName(@RequestParam String firstName) {
-        Map<String, Object> message = new HashMap<>();
-        List<Student> students = (List<Student>) studentService.findStudentByFirstName(firstName);
-
-        if (students.isEmpty()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No course with first name contains: '%s', found.", firstName));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", students);
-
-        return ResponseEntity.ok(message);
+    public ResponseEntity<ApiResponse<StudentResponse>> toAssignClassStudent(@PathVariable Long idStudent, @PathVariable Long idCourse) {
+        Student student = studentService.assignCourse(idStudent, idCourse);
+        return ResponseEntity.ok(ApiResponse.success(StudentMapper.toResponse(student)));
     }
 
     @GetMapping("/{id}/courses")
-    public ResponseEntity<?> getCoursesByStudentId(@PathVariable Long id) {
-        Map<String, Object> message = new HashMap<>();
-        List<Course> courses = (List<Course>) studentService.findCoursesByStudentId(id);
-
-        if (courses.isEmpty()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No courses associate to student with ID: '%d', found.", id));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", courses);
-
-        return ResponseEntity.ok(message);
+    public ResponseEntity<ApiResponse<Page<CourseResponse>>> getCoursesByStudentId(
+            @PathVariable Long id,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ) {
+        List<CourseResponse> courses = studentService.findCoursesByStudentId(id).stream()
+                .map(CourseMapper::toResponse)
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(pagedOrList(courses, page, size)));
     }
+
+    private <T> Page<T> pagedOrList(List<T> items, Integer page, Integer size) {
+        int pageNumber = page == null ? 0 : Math.max(page, 0);
+        int pageSize = size == null ? Math.max(items.size(), 1) : Math.max(size, 1);
+        int fromIndex = Math.min(pageNumber * pageSize, items.size());
+        int toIndex = Math.min(fromIndex + pageSize, items.size());
+        List<T> content = items.subList(fromIndex, toIndex);
+        return new PageImpl<>(content, PageRequest.of(pageNumber, pageSize), items.size());
+    }
+
+ 
 }

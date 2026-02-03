@@ -12,7 +12,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import java.util.List;
 import java.util.Optional;
 
-import static org.assertj.core.api.Java6Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
 class CourseRepositoryTest {
@@ -47,19 +47,19 @@ class CourseRepositoryTest {
     @DisplayName("Find Courses by Title")
     void findCourseByTitleContains() {
         //when
-        List<Course> expected = (List<Course>) courseRepository.findCourseByTitleContains("Course");
+        List<Course> expected = courseRepository.findCourseByTitleContains("Course");
 
         //then
-        assertThat(((List<Course>) expected).size() == 3).isTrue();
+        assertThat(expected.size() == 3).isTrue();
     }
 
     @Test
     @DisplayName("Find Courses by Description")
     void findCourseByDescriptionContains() {
         //when
-        List<Course> expected = (List<Course>) courseRepository.findCourseByDescriptionContains("Description");
+        List<Course> expected = courseRepository.findCourseByDescriptionContains("Description");
 
         //then
-        assertThat(((List<Course>) expected).size() == 3).isTrue();
+        assertThat(expected.size() == 3).isTrue();
     }
 }

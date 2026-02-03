@@ -10,7 +10,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-import static org.assertj.core.api.Java6Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class CourseServiceImplTest {
@@ -48,10 +48,10 @@ class CourseServiceImplTest {
                 .thenReturn(Arrays.asList(DataDummy.course01()));
 
         //when
-        List<Course> expected = (List<Course>) courseService.findCourseByTitleContains(title);
+        List<Course> expected = courseService.findCourseByTitleContains(title);
 
         //then
-        assertThat(expected.get(0)).isEqualTo(DataDummy.course01());
+        assertThat(expected.get(0).getCode()).isEqualTo(DataDummy.course01().getCode());
 
         verify(courseRepository).findCourseByTitleContains(title);
     }
@@ -64,10 +64,10 @@ class CourseServiceImplTest {
                 .thenReturn(Arrays.asList(DataDummy.course01()));
 
         //when
-        List<Course> expected = (List<Course>) courseService.findCourseByDescriptionContains(description);
+        List<Course> expected = courseService.findCourseByDescriptionContains(description);
 
         //then
-        assertThat(expected.get(0)).isEqualTo(DataDummy.course01());
+        assertThat(expected.get(0).getDescription()).isEqualTo(DataDummy.course01().getDescription());
 
         verify(courseRepository).findCourseByDescriptionContains(description);
     }

@@ -1,18 +1,22 @@
 package com.alefiengo.springboot.api.controller;
 
+import com.alefiengo.springboot.api.dto.ApiResponse;
+import com.alefiengo.springboot.api.dto.CourseRequest;
+import com.alefiengo.springboot.api.dto.CourseResponse;
+import com.alefiengo.springboot.api.dto.StudentResponse;
 import com.alefiengo.springboot.api.entity.Course;
-import com.alefiengo.springboot.api.entity.Student;
+import com.alefiengo.springboot.api.mapper.CourseMapper;
+import com.alefiengo.springboot.api.mapper.StudentMapper;
 import com.alefiengo.springboot.api.service.CourseService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 
-import javax.validation.Valid;
-import java.util.HashMap;
+import jakarta.validation.Valid;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 
 @RequiredArgsConstructor
 @RestController
@@ -22,176 +26,76 @@ public class CourseController {
     private final CourseService courseService;
 
     @GetMapping
-    public ResponseEntity<?> getAll() {
-        Map<String, Object> message = new HashMap<>();
-        List<Course> courses = (List<Course>) courseService.findAll();
+    public ResponseEntity<ApiResponse<Page<CourseResponse>>> getAll(
+            @RequestParam(required = false) String code,
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) String description,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ) {
+        boolean hasFilters = (code != null && !code.isBlank())
+                || (title != null && !title.isBlank())
+                || (description != null && !description.isBlank());
 
-        if (courses.isEmpty()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", "No courses found.");
-            return ResponseEntity.badRequest().body(message);
+        if (!hasFilters && (page != null || size != null)) {
+            int pageNumber = page == null ? 0 : Math.max(page, 0);
+            int pageSize = size == null ? 10 : Math.max(size, 1);
+            Page<CourseResponse> coursesPage = courseService.findAll(PageRequest.of(pageNumber, pageSize))
+                    .map(CourseMapper::toResponse);
+            return ResponseEntity.ok(ApiResponse.success(coursesPage));
         }
 
-        message.put("success", Boolean.TRUE);
-        message.put("data", courses);
-
-        return ResponseEntity.ok(message);
+        List<CourseResponse> courses = courseService.search(code, title, description).stream()
+                .map(CourseMapper::toResponse)
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(pagedOrList(courses, page, size)));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getById(@PathVariable Long id) {
-        Map<String, Object> message = new HashMap<>();
-        Optional<Course> oCourse = courseService.findById(id);
-
-        if (!oCourse.isPresent()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No course with ID: '%d', found.", id));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", oCourse.get());
-
-        return ResponseEntity.ok(message);
+    public ResponseEntity<ApiResponse<CourseResponse>> getById(@PathVariable Long id) {
+        Course course = courseService.getByIdOrThrow(id);
+        return ResponseEntity.ok(ApiResponse.success(CourseMapper.toResponse(course)));
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@Valid @RequestBody Course course, BindingResult result) {
-        Map<String, Object> message = new HashMap<>();
-        Map<String, Object> validations = new HashMap<>();
-
-        if (result.hasErrors()) {
-            result.getFieldErrors()
-                    .forEach(error -> {
-                        validations.put(error.getField(), error.getDefaultMessage());
-                    });
-
-            return ResponseEntity.badRequest().body(validations);
-        }
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", courseService.save(course));
-
-        return ResponseEntity.ok(message);
+    public ResponseEntity<ApiResponse<CourseResponse>> create(@Valid @RequestBody CourseRequest request) {
+        Course created = courseService.create(CourseMapper.toEntity(request));
+        return ResponseEntity.status(201).body(ApiResponse.success(CourseMapper.toResponse(created)));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> update(@PathVariable Long id, @Valid @RequestBody Course course, BindingResult result) {
-        Map<String, Object> message = new HashMap<>();
-        Map<String, Object> validations = new HashMap<>();
-        Course courseUpdate = null;
-        Optional<Course> oCourse = courseService.findById(id);
-
-        if (result.hasErrors()) {
-            result.getFieldErrors()
-                    .forEach(error -> {
-                        validations.put(error.getField(), error.getDefaultMessage());
-                    });
-
-            return ResponseEntity.badRequest().body(validations);
-        }
-
-        if (!oCourse.isPresent()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No course with ID: '%d', found.", id));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        courseUpdate = oCourse.get();
-        courseUpdate.setCode(course.getCode());
-        courseUpdate.setTitle(course.getTitle());
-        courseUpdate.setDescription(course.getDescription());
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", courseService.save(courseUpdate));
-
-        return ResponseEntity.ok(message);
+    public ResponseEntity<ApiResponse<CourseResponse>> update(@PathVariable Long id, @Valid @RequestBody CourseRequest request) {
+        Course updated = courseService.update(id, CourseMapper.toEntity(request));
+        return ResponseEntity.ok(ApiResponse.success(CourseMapper.toResponse(updated)));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable Long id) {
-        Map<String, Object> message = new HashMap<>();
-        Optional<Course> oCourse = courseService.findById(id);
-
-        if (!oCourse.isPresent()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No course with ID: '%d', found.", id));
-            return ResponseEntity.badRequest().body(message);
-        }
-
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        courseService.getByIdOrThrow(id);
         courseService.deleteById(id);
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", null);
-
-        return ResponseEntity.ok(message);
-    }
-
-    @GetMapping("/code")
-    public ResponseEntity<?> getCourseByCode(@RequestParam String code) {
-        Map<String, Object> message = new HashMap<>();
-        Optional<Course> oCourse = courseService.findCourseByCodeIgnoreCase(code);
-
-        if (!oCourse.isPresent()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No course with code: '%s', found.", code));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", oCourse.get());
-
-        return ResponseEntity.ok(message);
-    }
-
-    @GetMapping("/title")
-    public ResponseEntity<?> getCourseByTitle(@RequestParam String title) {
-        Map<String, Object> message = new HashMap<>();
-        List<Course> courses = (List<Course>) courseService.findCourseByTitleContains(title);
-
-        if (courses.isEmpty()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No course with title contains: '%s', found.", title));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", courses);
-
-        return ResponseEntity.ok(message);
-    }
-
-    @GetMapping("/description")
-    public ResponseEntity<?> getCourseByDescription(@RequestParam String description) {
-        Map<String, Object> message = new HashMap<>();
-        List<Course> courses = (List<Course>) courseService.findCourseByDescriptionContains(description);
-
-        if (courses.isEmpty()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No course with description contains: '%s', found.", description));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", courses);
-
-        return ResponseEntity.ok(message);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}/students")
-    public ResponseEntity<?> getStudentsByCourseId(@PathVariable Long id) {
-        Map<String, Object> message = new HashMap<>();
-        List<Student> students = (List<Student>) courseService.findStudentsByCourseId(id);
-
-        if (students.isEmpty()) {
-            message.put("success", Boolean.FALSE);
-            message.put("message", String.format("No students in to course with ID: '%d', found.", id));
-            return ResponseEntity.badRequest().body(message);
-        }
-
-        message.put("success", Boolean.TRUE);
-        message.put("data", students);
-
-        return ResponseEntity.ok(message);
+    public ResponseEntity<ApiResponse<Page<StudentResponse>>> getStudentsByCourseId(
+            @PathVariable Long id,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ) {
+        List<StudentResponse> students = courseService.findStudentsByCourseId(id).stream()
+                .map(StudentMapper::toResponse)
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(pagedOrList(students, page, size)));
     }
+
+    private <T> Page<T> pagedOrList(List<T> items, Integer page, Integer size) {
+        int pageNumber = page == null ? 0 : Math.max(page, 0);
+        int pageSize = size == null ? Math.max(items.size(), 1) : Math.max(size, 1);
+        int fromIndex = Math.min(pageNumber * pageSize, items.size());
+        int toIndex = Math.min(fromIndex + pageSize, items.size());
+        List<T> content = items.subList(fromIndex, toIndex);
+        return new PageImpl<>(content, PageRequest.of(pageNumber, pageSize), items.size());
+    }
+
+ 
 }

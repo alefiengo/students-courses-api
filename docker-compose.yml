@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16
+    container_name: springboot_api_db
+    environment:
+      POSTGRES_DB: springboot_api
+      POSTGRES_USER: alefiengo
+      POSTGRES_PASSWORD: alefiengo
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+volumes:
+  db-data:
